@@ -1,26 +1,75 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --bg: #f6f5f2;
+  --surface: #ffffff;
+  --surface-2: #f0eee9;
+  --border: #e4e1da;
+  --fg: #1c1b19;
+  --muted: #6f6b63;
+  --accent: #4f46e5;
+  --accent-soft: #eceafd;
+  --accent-fg: #ffffff;
+  --danger: #dc2626;
+  --danger-soft: #fdecec;
+  --success: #059669;
+  --success-soft: #e3f6ef;
+  --warning: #d97706;
+  --warning-soft: #fdf3e1;
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg: #121212;
+    --surface: #1b1b1d;
+    --surface-2: #242427;
+    --border: #2f2f33;
+    --fg: #ededeb;
+    --muted: #9b9a95;
+    --accent: #8b85ff;
+    --accent-soft: #26244a;
+    --accent-fg: #0f0e1a;
+    --danger: #f87171;
+    --danger-soft: #3a1d1d;
+    --success: #34d399;
+    --success-soft: #16302a;
+    --warning: #fbbf24;
+    --warning-soft: #352a12;
+    color-scheme: dark;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-fg: var(--accent-fg);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
