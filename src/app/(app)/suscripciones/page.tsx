@@ -8,11 +8,13 @@ import {
 } from "@/actions/subscriptions";
 import { ActionButton } from "@/components/action-button";
 import { FormDialog } from "@/components/form-dialog";
-import { SubscriptionFields } from "@/components/forms";
+import { SubscriptionFields, SubscriptionPaymentFields } from "@/components/forms";
 import { Badge, Card, CardTitle, CategoryBadge, Empty, PageHeader, ProgressBar, Stat } from "@/components/ui";
 import { chargeDateIn, formatDate, formatMonth, monthKey, nextChargeDate, relativeDay, todayISO } from "@/lib/dates";
 import { getCategories, getChargesForMonth, getSettings, getSubscriptions } from "@/lib/data";
+import { getExchangeRates, suggestedRates } from "@/lib/exchange";
 import { fmt, formatMoney, toLocal, toUSD } from "@/lib/money";
+import { paymentLabel } from "@/lib/payment-methods";
 
 export const metadata: Metadata = { title: "Suscripciones" };
 
@@ -20,11 +22,13 @@ export default async function SubscriptionsPage() {
   const settings = await getSettings();
   const today = todayISO(settings.timezone);
   const month = monthKey(today);
-  const [subs, categories, charges] = await Promise.all([
+  const [subs, categories, charges, exchange] = await Promise.all([
     getSubscriptions(),
     getCategories(),
     getChargesForMonth(month),
+    getExchangeRates(),
   ]);
+  const rates = suggestedRates(exchange, settings);
   const categoryById = new Map(categories.map((c) => [c.id, c]));
   const paidIds = new Set(charges.map((c) => c.subscriptionId));
 
@@ -122,6 +126,7 @@ export default async function SubscriptionsPage() {
                     </div>
                     <p className="mt-0.5 text-xs text-muted">
                       Cobra el día {s.billingDay} · próximo {formatDate(next)} ({relativeDay(next, today)})
+                      {s.paymentMethod && ` · ${paymentLabel(s.paymentMethod)}`}
                       {s.notes && ` · ${s.notes}`}
                     </p>
                   </div>
@@ -137,9 +142,16 @@ export default async function SubscriptionsPage() {
                           <Check size={14} /> Pagado <Undo2 size={12} className="opacity-60" />
                         </ActionButton>
                       ) : (
-                        <ActionButton action={markSubscriptionPaid.bind(null, s.id, month)} variant="secondary">
-                          Marcar pagado
-                        </ActionButton>
+                        <FormDialog
+                          title={`Pagar ${s.name}`}
+                          trigger="Marcar pagado"
+                          triggerVariant="secondary"
+                          triggerSize="sm"
+                          submitLabel="Marcar pagado"
+                          action={markSubscriptionPaid.bind(null, s.id, month)}
+                        >
+                          <SubscriptionPaymentFields sub={s} settings={settings} rates={rates} />
+                        </FormDialog>
                       ))}
                     <FormDialog
                       title="Editar suscripción"
@@ -166,7 +178,7 @@ export default async function SubscriptionsPage() {
           </ul>
         )}
         <p className="mt-3 text-xs text-muted">
-          “Marcar pagado” registra el cobro automáticamente en Gastos.
+          “Marcar pagado” registra el cobro en Gastos, con el banco y lo que te cobró en bolivianos.
         </p>
       </Card>
     </>

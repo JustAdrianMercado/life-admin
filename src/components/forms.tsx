@@ -1,5 +1,7 @@
 import type { Category, Expense, SavingsGoal, Settings, Subscription, Task } from "@/db/schema";
-import { CategoryOptions, Field, Input, Select, Textarea } from "./ui";
+import type { SuggestedRates } from "@/lib/payment-methods";
+import { PaymentFields } from "./payment-fields";
+import { CategoryOptions, Field, Input, PaymentMethodOptions, Select, Textarea } from "./ui";
 
 function CurrencySelect({ value, settings }: { value?: string; settings: Settings }) {
   return (
@@ -62,6 +64,11 @@ export function SubscriptionFields({
           </Select>
         </Field>
       </div>
+      <Field label="Se paga con">
+        <Select name="paymentMethod" defaultValue={sub?.paymentMethod ?? ""}>
+          <PaymentMethodOptions />
+        </Select>
+      </Field>
       {sub && (
         <Field label="Estado">
           <Select name="active" defaultValue={sub.active ? "on" : "off"}>
@@ -118,11 +125,13 @@ export function ExpenseFields({
   expense,
   categories,
   settings,
+  rates,
   today,
 }: {
   expense?: Expense;
   categories: Category[];
   settings: Settings;
+  rates: SuggestedRates;
   today: string;
 }) {
   return (
@@ -131,7 +140,14 @@ export function ExpenseFields({
       <Field label="Descripción">
         <Input name="description" defaultValue={expense?.description} placeholder="Almuerzo, pasaje…" required />
       </Field>
-      <AmountRow name="amount" label="Monto" amount={expense?.amount} currency={expense?.currency} settings={settings} />
+      <PaymentFields
+        amount={expense?.amount}
+        currency={expense?.currency}
+        paymentMethod={expense?.paymentMethod}
+        amountLocal={expense?.amountLocal}
+        localCurrency={settings.localCurrency}
+        rates={rates}
+      />
       <div className="grid grid-cols-2 gap-3">
         <Field label="Fecha">
           <Input name="date" type="date" defaultValue={expense?.date ?? today} required />
@@ -143,6 +159,27 @@ export function ExpenseFields({
         </Field>
       </div>
     </>
+  );
+}
+
+/** Pago del mes de una suscripción: se puede ajustar el monto, el medio y lo cobrado. */
+export function SubscriptionPaymentFields({
+  sub,
+  settings,
+  rates,
+}: {
+  sub: Subscription;
+  settings: Settings;
+  rates: SuggestedRates;
+}) {
+  return (
+    <PaymentFields
+      amount={sub.amount}
+      currency={sub.currency}
+      paymentMethod={sub.paymentMethod}
+      localCurrency={settings.localCurrency}
+      rates={rates}
+    />
   );
 }
 

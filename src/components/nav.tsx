@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { CalendarClock, CheckSquare, Home, PiggyBank, Settings, Wallet } from "lucide-react";
+import { ArrowLeftRight, CalendarClock, CheckSquare, Home, PiggyBank, Settings, Wallet } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -11,6 +11,7 @@ export const NAV_ITEMS = [
   { href: "/suscripciones", label: "Suscripciones", icon: CalendarClock },
   { href: "/gastos", label: "Gastos", icon: Wallet },
   { href: "/metas", label: "Metas", icon: PiggyBank },
+  { href: "/cambio", label: "Tipo de cambio", icon: ArrowLeftRight },
   { href: "/ajustes", label: "Ajustes", icon: Settings },
 ];
 
@@ -41,7 +42,7 @@ export function SideNav() {
 
 export function BottomNav() {
   const pathname = usePathname();
-  // En el celular "Ajustes" queda fuera de la barra; se accede desde Inicio.
+  // En el celular "Tipo de cambio" y "Ajustes" quedan fuera de la barra; se accede desde Inicio.
   return (
     <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
       <div className="mx-auto grid max-w-lg grid-cols-5">

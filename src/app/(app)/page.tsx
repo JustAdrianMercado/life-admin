@@ -3,9 +3,9 @@ import Link from "next/link";
 import { saveExpense } from "@/actions/expenses";
 import { markSubscriptionPaid } from "@/actions/subscriptions";
 import { saveTask } from "@/actions/tasks";
-import { ActionButton } from "@/components/action-button";
 import { FormDialog } from "@/components/form-dialog";
-import { ExpenseFields, TaskFields } from "@/components/forms";
+import { ExchangeCredit } from "@/components/exchange";
+import { ExpenseFields, SubscriptionPaymentFields, TaskFields } from "@/components/forms";
 import { GoalCard } from "@/components/goal-card";
 import { sortByPriority, TaskItem } from "@/components/task-item";
 import { buttonClass, Card, CardTitle, Empty, ProgressBar, Stat } from "@/components/ui";
@@ -28,7 +28,9 @@ import {
   getSettings,
   getSubscriptions,
 } from "@/lib/data";
-import { fmt, formatMoney, sumUSD, toLocal } from "@/lib/money";
+import { getExchangeRates, suggestedRates } from "@/lib/exchange";
+import { fmt, formatMoney, formatRate, isEstimatedLocal, localLabel, paidLocal, sumUSD, toLocal } from "@/lib/money";
+import { isBank } from "@/lib/payment-methods";
 
 function SeeAll({ href }: { href: string }) {
   return (
@@ -42,14 +44,16 @@ export default async function DashboardPage() {
   const settings = await getSettings();
   const today = todayISO(settings.timezone);
   const month = monthKey(today);
-  const [categories, subs, charges, openTasks, expenses, goals] = await Promise.all([
+  const [categories, subs, charges, openTasks, expenses, goals, exchange] = await Promise.all([
     getCategories(),
     getSubscriptions(),
     getChargesForMonth(month),
     getOpenTasks(),
     getExpensesForMonth(month),
     getGoalsWithProgress(),
+    getExchangeRates(),
   ]);
+  const rates = suggestedRates(exchange, settings);
 
   // Cobros
   const paidIds = new Set(charges.map((c) => c.subscriptionId));
@@ -75,7 +79,14 @@ export default async function DashboardPage() {
 
   // Gastos
   const spentUSD = sumUSD(expenses, settings);
+  const spentLocal = expenses.reduce((acc, e) => acc + paidLocal(e, settings), 0);
   const budget = settings.monthlyBudgetUsd;
+
+  // Tipo de cambio: la venta de los bancos con los que pagas (o el rango de todos).
+  const usedBanks = new Set([...subs, ...expenses].map((x) => x.paymentMethod).filter(isBank));
+  const bankRates = exchange.banks?.banks.filter((b) => b.sell) ?? [];
+  const myBanks = bankRates.filter((b) => usedBanks.has(b.slug));
+  const bankSells = bankRates.map((b) => b.sell!);
 
   const greeting = new Intl.DateTimeFormat("es", {
     weekday: "long",
@@ -96,7 +107,7 @@ export default async function DashboardPage() {
             <TaskFields categories={categories} />
           </FormDialog>
           <FormDialog title="Nuevo gasto" trigger={<><Plus size={16} /> Gasto</>} action={saveExpense}>
-            <ExpenseFields categories={categories} settings={settings} today={today} />
+            <ExpenseFields categories={categories} settings={settings} rates={rates} today={today} />
           </FormDialog>
           <Link href="/ajustes" className={`${buttonClass("ghost")} md:hidden`} aria-label="Ajustes">
             <SettingsIcon size={18} />
@@ -105,6 +116,54 @@ export default async function DashboardPage() {
       </header>
 
       <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="lg:col-span-2">
+          <CardTitle action={<SeeAll href="/cambio" />}>Dólar hoy · Bs por USD</CardTitle>
+          {!exchange.configured ? (
+            <Empty>
+              Agrega <code>WAVESOFT_API_KEY</code> para ver el tipo de cambio del día.
+            </Empty>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                <Stat label="Oficial BCB" value={exchange.tc ? formatRate(exchange.tc.official.sell) : "—"} />
+                <Stat
+                  label="Paralelo"
+                  value={exchange.tc ? formatRate(exchange.tc.parallel.sell) : "—"}
+                  hint={exchange.tc && `compra ${formatRate(exchange.tc.parallel.buy)}`}
+                />
+                <Stat
+                  label="Binance P2P"
+                  value={exchange.p2p ? formatRate(exchange.p2p.buy.median) : "—"}
+                  hint={exchange.p2p && `vender ${formatRate(exchange.p2p.sell.median)}`}
+                />
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-sm">
+                <p className="text-muted">
+                  {myBanks.length > 0 ? (
+                    <>
+                      Venta en tus bancos:{" "}
+                      {myBanks.map((b, i) => (
+                        <span key={b.slug}>
+                          {i > 0 && " · "}
+                          {b.shortName} <span className="tabular font-semibold text-fg">{formatRate(b.sell!)}</span>
+                        </span>
+                      ))}
+                    </>
+                  ) : bankSells.length > 0 ? (
+                    <>
+                      Venta en bancos:{" "}
+                      <span className="tabular font-semibold text-fg">
+                        {formatRate(Math.min(...bankSells))} – {formatRate(Math.max(...bankSells))}
+                      </span>
+                    </>
+                  ) : null}
+                </p>
+                <ExchangeCredit />
+              </div>
+            </>
+          )}
+        </Card>
+
         <Card>
           <CardTitle action={<SeeAll href="/pendientes" />}>Pendientes</CardTitle>
           {urgentDated.length === 0 && topUndated.length === 0 ? (
@@ -145,9 +204,16 @@ export default async function DashboardPage() {
                   Cobró {relativeDay(chargeDateIn(month, s.billingDay), today)} · ¿ya lo pagaste?
                 </p>
               </div>
-              <ActionButton action={markSubscriptionPaid.bind(null, s.id, month)} variant="secondary">
-                Marcar pagado
-              </ActionButton>
+              <FormDialog
+                title={`Pagar ${s.name}`}
+                trigger="Marcar pagado"
+                triggerVariant="secondary"
+                triggerSize="sm"
+                submitLabel="Marcar pagado"
+                action={markSubscriptionPaid.bind(null, s.id, month)}
+              >
+                <SubscriptionPaymentFields sub={s} settings={settings} rates={rates} />
+              </FormDialog>
             </div>
           ))}
           {upcoming.length === 0 && unpaidDue.length === 0 ? (
@@ -194,6 +260,15 @@ export default async function DashboardPage() {
               value={(spentUSD / budget) * 100}
               color={spentUSD > budget ? "var(--danger)" : undefined}
             />
+          )}
+          {expenses.length > 0 && (
+            <p className="mt-3 border-t border-border pt-3 text-sm text-muted">
+              Pagado en {localLabel(settings.localCurrency)}:{" "}
+              <span className="tabular font-semibold text-fg">
+                {expenses.some(isEstimatedLocal) && "≈ "}
+                {formatMoney(spentLocal, settings.localCurrency)}
+              </span>
+            </p>
           )}
         </Card>
 

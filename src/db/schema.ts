@@ -42,6 +42,8 @@ export const subscriptions = pgTable("subscriptions", {
   // Día del mes en que cobran (1–31). Si el mes es más corto, se cobra el último día.
   billingDay: integer("billing_day").notNull(),
   categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
+  // Medio con el que se suele pagar (slug de banco, "binance-p2p", "efectivo"…).
+  paymentMethod: text("payment_method"),
   active: boolean("active").notNull().default(true),
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -52,6 +54,9 @@ export const expenses = pgTable("expenses", {
   description: text("description").notNull(),
   amount: numeric("amount", { precision: 12, scale: 2, mode: "number" }).notNull(),
   currency: currencyEnum("currency").notNull().default("USD"),
+  paymentMethod: text("payment_method"),
+  // Lo que realmente se cobró en moneda local (ej. Bs que descontó el banco por un gasto en USD).
+  amountLocal: numeric("amount_local", { precision: 12, scale: 2, mode: "number" }),
   date: date("date", { mode: "string" }).notNull(),
   categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
   subscriptionId: integer("subscription_id").references(() => subscriptions.id, {

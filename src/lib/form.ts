@@ -23,6 +23,18 @@ export function currency(fd: FormData): Currency {
   return str(fd, "currency") === "LOCAL" ? "LOCAL" : "USD";
 }
 
+/** Monto, moneda, medio de pago y lo cobrado en moneda local (si el gasto es en moneda local, es el mismo monto). */
+export function payment(fd: FormData) {
+  const amount = num(fd, "amount");
+  const cur = currency(fd);
+  return {
+    amount,
+    currency: cur,
+    paymentMethod: optStr(fd, "paymentMethod"),
+    amountLocal: cur === "LOCAL" ? amount : str(fd, "amountLocal") ? num(fd, "amountLocal") : null,
+  };
+}
+
 const PRIORITIES: Priority[] = ["baja", "media", "alta", "urgente"];
 export function priority(fd: FormData): Priority {
   const v = str(fd, "priority") as Priority;

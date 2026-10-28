@@ -5,14 +5,13 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { expenses, subscriptionCharges } from "@/db/schema";
 import { requireAuth } from "@/lib/auth";
-import { currency, num, optInt, str } from "@/lib/form";
+import { optInt, payment, str } from "@/lib/form";
 
 export async function saveExpense(fd: FormData) {
   await requireAuth();
   const values = {
     description: str(fd, "description"),
-    amount: num(fd, "amount"),
-    currency: currency(fd),
+    ...payment(fd),
     date: str(fd, "date"),
     categoryId: optInt(fd, "categoryId"),
   };

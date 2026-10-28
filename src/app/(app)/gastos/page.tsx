@@ -8,7 +8,9 @@ import { ExpenseFields } from "@/components/forms";
 import { buttonClass, Card, CardTitle, Empty, PageHeader, ProgressBar, Stat } from "@/components/ui";
 import { formatDate, formatMonth, monthKey, shiftMonth, todayISO } from "@/lib/dates";
 import { getCategories, getExpensesForMonth, getSettings } from "@/lib/data";
-import { fmt, formatMoney, sumUSD, toLocal, toUSD } from "@/lib/money";
+import { getExchangeRates, suggestedRates } from "@/lib/exchange";
+import { fmt, formatMoney, formatRate, isEstimatedLocal, localLabel, paidLocal, sumUSD, toUSD } from "@/lib/money";
+import { paymentLabel } from "@/lib/payment-methods";
 
 export const metadata: Metadata = { title: "Gastos" };
 
@@ -18,7 +20,12 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
   const { mes } = await searchParams;
   const month = typeof mes === "string" && /^\d{4}-\d{2}$/.test(mes) ? mes : monthKey(today);
 
-  const [expenses, categories] = await Promise.all([getExpensesForMonth(month), getCategories()]);
+  const [expenses, categories, exchange] = await Promise.all([
+    getExpensesForMonth(month),
+    getCategories(),
+    getExchangeRates(),
+  ]);
+  const rates = suggestedRates(exchange, settings);
   const categoryById = new Map(categories.map((c) => [c.id, c]));
 
   const totalUSD = sumUSD(expenses, settings);
@@ -27,6 +34,18 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
   const byCategory = new Map<number | null, number>();
   for (const e of expenses) byCategory.set(e.categoryId, (byCategory.get(e.categoryId) ?? 0) + toUSD(e, settings));
   const breakdown = [...byCategory.entries()].sort(([, a], [, b]) => b - a);
+
+  // Lo que salió en moneda local: lo que cobró el banco en los gastos en USD que lo registran.
+  const local = localLabel(settings.localCurrency);
+  const totalLocal = expenses.reduce((acc, e) => acc + paidLocal(e, settings), 0);
+  const estimatedCount = expenses.filter(isEstimatedLocal).length;
+  const chargedUSD = expenses.filter((e) => e.currency === "USD" && e.amountLocal != null);
+  const chargedAmount = chargedUSD.reduce((acc, e) => acc + e.amount, 0);
+  const avgRate = chargedAmount > 0 ? chargedUSD.reduce((acc, e) => acc + e.amountLocal!, 0) / chargedAmount : null;
+
+  const byMethod = new Map<string | null, number>();
+  for (const e of expenses) byMethod.set(e.paymentMethod, (byMethod.get(e.paymentMethod) ?? 0) + paidLocal(e, settings));
+  const methods = [...byMethod.entries()].sort(([, a], [, b]) => b - a);
 
   const isCurrent = month === monthKey(today);
 
@@ -52,42 +71,84 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
         }
         actions={
           <FormDialog title="Nuevo gasto" trigger={<><Plus size={16} /> Gasto</>} action={saveExpense}>
-            <ExpenseFields categories={categories} settings={settings} today={isCurrent ? today : `${month}-01`} />
+            <ExpenseFields
+              categories={categories}
+              settings={settings}
+              rates={rates}
+              today={isCurrent ? today : `${month}-01`}
+            />
           </FormDialog>
         }
       />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
-        <Card>
-          <CardTitle>Gastado en el mes</CardTitle>
-          <Stat
-            label="Total"
-            value={formatMoney(totalUSD, "USD")}
-            tone={budget && totalUSD > budget ? "danger" : undefined}
-            hint={`≈ ${formatMoney(toLocal({ amount: totalUSD, currency: "USD" }, settings), settings.localCurrency)} · ${expenses.length} gastos`}
-          />
-          {budget ? (
-            <div className="mt-4">
-              <div className="mb-1.5 flex justify-between text-xs text-muted">
-                <span>Presupuesto {formatMoney(budget, "USD")}</span>
-                <span>
-                  {totalUSD <= budget
-                    ? `Quedan ${formatMoney(budget - totalUSD, "USD")}`
-                    : `Te pasaste ${formatMoney(totalUSD - budget, "USD")}`}
-                </span>
-              </div>
-              <ProgressBar value={(totalUSD / budget) * 100} color={totalUSD > budget ? "var(--danger)" : undefined} />
+        <div className="flex flex-col gap-4">
+          <Card>
+            <CardTitle>Gastado en el mes</CardTitle>
+            <div className="grid grid-cols-2 gap-4">
+              <Stat
+                label="Total en USD"
+                value={formatMoney(totalUSD, "USD")}
+                tone={budget && totalUSD > budget ? "danger" : undefined}
+                hint={`${expenses.length} gastos`}
+              />
+              <Stat
+                label={`Pagado en ${local}`}
+                value={formatMoney(totalLocal, settings.localCurrency)}
+                hint={[
+                  avgRate && `TC promedio ${formatRate(avgRate)}`,
+                  estimatedCount > 0 && `${estimatedCount} estimado${estimatedCount === 1 ? "" : "s"}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              />
             </div>
-          ) : (
-            <p className="mt-3 text-xs text-muted">
-              Puedes definir un presupuesto mensual en{" "}
-              <Link href="/ajustes" className="text-accent">
-                Ajustes
-              </Link>
-              .
-            </p>
+            {budget ? (
+              <div className="mt-4">
+                <div className="mb-1.5 flex justify-between text-xs text-muted">
+                  <span>Presupuesto {formatMoney(budget, "USD")}</span>
+                  <span>
+                    {totalUSD <= budget
+                      ? `Quedan ${formatMoney(budget - totalUSD, "USD")}`
+                      : `Te pasaste ${formatMoney(totalUSD - budget, "USD")}`}
+                  </span>
+                </div>
+                <ProgressBar value={(totalUSD / budget) * 100} color={totalUSD > budget ? "var(--danger)" : undefined} />
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-muted">
+                Puedes definir un presupuesto mensual en{" "}
+                <Link href="/ajustes" className="text-accent">
+                  Ajustes
+                </Link>
+                .
+              </p>
+            )}
+            {estimatedCount > 0 && (
+              <p className="mt-3 text-xs text-muted">
+                Los gastos en USD sin “Cobrado en {local}” se estiman con {formatRate(settings.usdToLocalRate)}. Edítalos
+                para poner lo que te cobró el banco.
+              </p>
+            )}
+          </Card>
+
+          {methods.some(([method]) => method) && (
+            <Card>
+              <CardTitle>Por medio de pago</CardTitle>
+              <ul className="divide-y divide-border">
+                {methods.map(([method, amount]) => (
+                  <li key={method ?? "none"} className="flex justify-between py-2 text-sm">
+                    <span>{paymentLabel(method) ?? "Sin especificar"}</span>
+                    <span className="tabular font-medium">
+                      {formatMoney(amount, settings.localCurrency)}{" "}
+                      <span className="text-xs text-muted">{Math.round((amount / totalLocal) * 100)}%</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
           )}
-        </Card>
+        </div>
 
         <Card>
           <CardTitle>Por categoría</CardTitle>
@@ -142,9 +203,18 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
                     <p className="text-xs text-muted">
                       {formatDate(e.date)}
                       {c && ` · ${c.name}`}
+                      {e.paymentMethod && ` · ${paymentLabel(e.paymentMethod)}`}
                     </p>
                   </div>
-                  <span className="tabular text-sm font-semibold">{fmt(e, settings)}</span>
+                  <div className="text-right">
+                    <p className="tabular text-sm font-semibold">{fmt(e, settings)}</p>
+                    {e.currency === "USD" && (
+                      <p className="tabular text-xs text-muted">
+                        {isEstimatedLocal(e) && "≈ "}
+                        {formatMoney(paidLocal(e, settings), settings.localCurrency)}
+                      </p>
+                    )}
+                  </div>
                   <div className="flex">
                     <FormDialog
                       title="Editar gasto"
@@ -154,7 +224,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
                       triggerSize="sm"
                       action={saveExpense}
                     >
-                      <ExpenseFields expense={e} categories={categories} settings={settings} today={today} />
+                      <ExpenseFields expense={e} categories={categories} settings={settings} rates={rates} today={today} />
                     </FormDialog>
                     <ActionButton
                       action={deleteExpense.bind(null, e.id)}

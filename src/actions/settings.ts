@@ -29,6 +29,17 @@ export async function saveSettings(fd: FormData) {
   revalidatePath("/", "layout");
 }
 
+/** Usa una tasa del día (oficial, paralelo, P2P…) como tasa de conversión de la app. */
+export async function setAppRate(rate: number) {
+  await requireAuth();
+  if (!Number.isFinite(rate) || rate <= 0) return;
+  await db.insert(settings).values({ id: 1, usdToLocalRate: rate }).onConflictDoUpdate({
+    target: settings.id,
+    set: { usdToLocalRate: rate },
+  });
+  revalidatePath("/", "layout");
+}
+
 export async function saveCategory(fd: FormData) {
   await requireAuth();
   const values = {

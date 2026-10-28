@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import type { ComponentProps, ReactNode } from "react";
 import type { Category, Priority } from "@/db/schema";
+import { BANKS, OTHER_METHODS } from "@/lib/payment-methods";
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
@@ -153,6 +154,28 @@ export function Stat({ label, value, hint, tone }: { label: string; value: React
 
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted">{children}</p>;
+}
+
+export function PaymentMethodOptions() {
+  return (
+    <>
+      <option value="">Sin especificar</option>
+      <optgroup label="Bancos">
+        {BANKS.map((b) => (
+          <option key={b.slug} value={b.slug}>
+            {b.name}
+          </option>
+        ))}
+      </optgroup>
+      <optgroup label="Otros">
+        {OTHER_METHODS.map((m) => (
+          <option key={m.slug} value={m.slug}>
+            {m.name}
+          </option>
+        ))}
+      </optgroup>
+    </>
+  );
 }
 
 export function CategoryOptions({ categories }: { categories: Category[] }) {
