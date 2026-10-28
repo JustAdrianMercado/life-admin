@@ -53,9 +53,14 @@ export type P2PMarket = {
   status: RateStatus;
 };
 
+// trim() también quita un BOM (U+FEFF) que puede colarse al pegar la key en una variable de entorno.
+function apiKey() {
+  return process.env.WAVESOFT_API_KEY?.trim() || null;
+}
+
 async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { Authorization: `Bearer ${process.env.WAVESOFT_API_KEY}` },
+    headers: { Authorization: `Bearer ${apiKey()}` },
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`wavesoft ${path}: HTTP ${res.status} ${await res.text()}`);
@@ -89,7 +94,7 @@ async function safe<T>(promise: Promise<T>) {
 }
 
 export async function getExchangeRates() {
-  if (!process.env.WAVESOFT_API_KEY) return { configured: false, tc: null, banks: null, p2p: null };
+  if (!apiKey()) return { configured: false, tc: null, banks: null, p2p: null };
   const [tc, banks, p2p] = await Promise.all([safe(getTc()), safe(getBanks()), safe(getP2P())]);
   return { configured: true, tc, banks, p2p };
 }
