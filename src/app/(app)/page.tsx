@@ -1,11 +1,13 @@
 import { ArrowRight, Plus, Settings as SettingsIcon } from "lucide-react";
 import Link from "next/link";
+import { saveEvent } from "@/actions/events";
 import { saveExpense } from "@/actions/expenses";
 import { markSubscriptionPaid } from "@/actions/subscriptions";
 import { saveTask } from "@/actions/tasks";
+import { EventItem } from "@/components/event-item";
 import { FormDialog } from "@/components/form-dialog";
 import { ExchangeCredit } from "@/components/exchange";
-import { ExpenseFields, SubscriptionPaymentFields, TaskFields } from "@/components/forms";
+import { EventFields, ExpenseFields, SubscriptionPaymentFields, TaskFields } from "@/components/forms";
 import { GoalCard } from "@/components/goal-card";
 import { sortByPriority, TaskItem } from "@/components/task-item";
 import { buttonClass, Card, CardTitle, Empty, ProgressBar, Stat } from "@/components/ui";
@@ -22,6 +24,7 @@ import {
 import {
   getCategories,
   getChargesForMonth,
+  getEventOccurrences,
   getExpensesForMonth,
   getGoalsWithProgress,
   getOpenTasks,
@@ -44,7 +47,8 @@ export default async function DashboardPage() {
   const settings = await getSettings();
   const today = todayISO(settings.timezone);
   const month = monthKey(today);
-  const [categories, subs, charges, openTasks, expenses, goals, exchange] = await Promise.all([
+  const weekEnd = addDays(today, 6);
+  const [categories, subs, charges, openTasks, expenses, goals, exchange, agenda] = await Promise.all([
     getCategories(),
     getSubscriptions(),
     getChargesForMonth(month),
@@ -52,6 +56,7 @@ export default async function DashboardPage() {
     getExpensesForMonth(month),
     getGoalsWithProgress(),
     getExchangeRates(),
+    getEventOccurrences(today, weekEnd),
   ]);
   const rates = suggestedRates(exchange, settings);
 
@@ -73,7 +78,6 @@ export default async function DashboardPage() {
     .slice(0, 4);
 
   // Pendientes
-  const weekEnd = addDays(today, 6);
   const urgentDated = openTasks.filter((t) => t.dueDate && t.dueDate <= weekEnd);
   const topUndated = openTasks.filter((t) => !t.dueDate).sort(sortByPriority).slice(0, 3);
 
@@ -161,6 +165,37 @@ export default async function DashboardPage() {
                 <ExchangeCredit />
               </div>
             </>
+          )}
+        </Card>
+
+        <Card>
+          <CardTitle
+            action={
+              <div className="flex items-center gap-2">
+                <FormDialog
+                  title="Nuevo evento"
+                  trigger={<Plus size={14} />}
+                  triggerLabel="Nuevo evento"
+                  triggerVariant="ghost"
+                  triggerSize="sm"
+                  action={saveEvent}
+                >
+                  <EventFields categories={categories} date={today} />
+                </FormDialog>
+                <SeeAll href="/calendario" />
+              </div>
+            }
+          >
+            Agenda · 7 días
+          </CardTitle>
+          {agenda.length === 0 ? (
+            <Empty>Sin eventos esta semana.</Empty>
+          ) : (
+            <ul className="divide-y divide-border">
+              {agenda.slice(0, 5).map(({ event, date }) => (
+                <EventItem key={`${event.id}-${date}`} event={event} date={date} categories={categories} today={today} showDate />
+              ))}
+            </ul>
           )}
         </Card>
 
@@ -272,7 +307,7 @@ export default async function DashboardPage() {
           )}
         </Card>
 
-        <Card>
+        <Card className="lg:col-span-2">
           <CardTitle action={<SeeAll href="/metas" />}>Scoreboard</CardTitle>
           {goals.length === 0 ? (
             <Empty>Sin metas de ahorro todavía.</Empty>

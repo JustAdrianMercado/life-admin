@@ -1,4 +1,5 @@
-import type { Category, Expense, SavingsGoal, Settings, Subscription, Task } from "@/db/schema";
+import { EVENT_REPEATS, type CalendarEvent, type Category, type Expense, type SavingsGoal, type Settings, type Subscription, type Task } from "@/db/schema";
+import { repeatLabel } from "@/lib/calendar";
 import type { SuggestedRates } from "@/lib/payment-methods";
 import { PaymentFields } from "./payment-fields";
 import { CategoryOptions, Field, Input, PaymentMethodOptions, Select, Textarea } from "./ui";
@@ -116,6 +117,59 @@ export function TaskFields({ task, categories }: { task?: Task; categories: Cate
       </div>
       <Field label="Notas">
         <Textarea name="notes" defaultValue={task?.notes ?? ""} />
+      </Field>
+    </>
+  );
+}
+
+export function EventFields({
+  event,
+  categories,
+  date,
+}: {
+  event?: CalendarEvent;
+  categories: Category[];
+  date: string;
+}) {
+  return (
+    <>
+      {event && <input type="hidden" name="id" value={event.id} />}
+      <Field label="Evento">
+        <Input name="title" defaultValue={event?.title} placeholder="Reunión, dentista, cumpleaños…" required />
+      </Field>
+      <div className="grid grid-cols-[1fr_6.5rem_6.5rem] gap-3">
+        <Field label="Fecha">
+          <Input name="date" type="date" defaultValue={event?.date ?? date} required />
+        </Field>
+        <Field label="Desde">
+          <Input name="startTime" type="time" defaultValue={event?.startTime?.slice(0, 5) ?? ""} />
+        </Field>
+        <Field label="Hasta">
+          <Input name="endTime" type="time" defaultValue={event?.endTime?.slice(0, 5) ?? ""} />
+        </Field>
+      </div>
+      <p className="-mt-2 text-xs text-muted">Sin hora = todo el día.</p>
+      <Field label="Lugar o link (opcional)">
+        <Input name="location" defaultValue={event?.location ?? ""} placeholder="Oficina, https://meet.google.com/…" />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Repetir">
+          <Select name="repeat" defaultValue={event?.repeat ?? "none"}>
+            {EVENT_REPEATS.map((r) => (
+              <option key={r} value={r}>
+                {repeatLabel[r]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Categoría">
+          <Select name="categoryId" defaultValue={event?.categoryId ?? ""}>
+            <CategoryOptions categories={categories} />
+          </Select>
+        </Field>
+      </div>
+      <Field label="Notas">
+        <Textarea name="notes" defaultValue={event?.notes ?? ""} />
       </Field>
     </>
   );

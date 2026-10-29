@@ -2,6 +2,7 @@
 
 Suscripciones (qué día cobran y cuánto necesitas al mes), pendientes con y sin fecha, gastos del mes y un scoreboard de metas de ahorro.
 Tipo de cambio del día (oficial BCB, paralelo, Binance P2P y cada banco) y gastos en bolivianos según lo que cobró cada banco.
+Calendario con los cobros, eventos/reuniones y pendientes, y notificaciones push cada mañana.
 
 Next.js 16 · Drizzle ORM · Postgres (Neon en producción, PGlite en local) · Tailwind.
 
@@ -45,14 +46,22 @@ Los datos vienen de la API de [NextWave Software](https://wavesoft.cloud/develop
 - Al registrar un gasto en USD eliges con qué pagaste: los Bs cobrados se estiman con la **venta** de ese banco (o la compra de USDT en Binance P2P) y puedes corregirlos con lo que realmente te descontaron. El total del mes en Bs usa ese monto.
 - Las condiciones de la API piden mostrar el crédito “NextWave Software” con enlace a wavesoft.cloud (ya está en Inicio y en Tipo de cambio).
 
+## Calendario y notificaciones
+
+- `/calendario`: vista mensual con los cobros de suscripciones, los eventos (pueden repetirse cada semana, mes o año) y los pendientes con fecha. Toca un día para ver el detalle, marcar un cobro como pagado o crear un evento.
+- Notificaciones push (Web Push, sin servicios externos): se activan en *Ajustes → Notificaciones*, una vez por dispositivo. En iPhone primero hay que agregar la app a la pantalla de inicio y abrirla desde ahí.
+- Un cron de Vercel (`vercel.json`) llama a `/api/cron/notify` todos los días a las 12:00 UTC (8:00 en Bolivia): avisa de los cobros de hoy y de dentro de N días (configurable en Ajustes), los eventos del día y los pendientes que vencen hoy.
+- Variables: `NEXT_PUBLIC_VAPID_PUBLIC_KEY` y `VAPID_PRIVATE_KEY` (`npx web-push generate-vapid-keys`) y `CRON_SECRET` (cadena aleatoria). La clave pública se incrusta en el build: si la cambias, vuelve a publicar.
+
 ## Cambios en la base de datos
 
 Edita `src/db/schema.ts`, luego `npm run db:generate` y `npm run db:migrate`.
 
 ## Estructura
 
-- `src/app/(app)/` — páginas: Inicio, Pendientes, Suscripciones, Gastos, Metas, Tipo de cambio, Ajustes
+- `src/app/(app)/` — páginas: Inicio, Calendario, Pendientes, Suscripciones, Gastos, Metas, Tipo de cambio, Ajustes
 - `src/lib/exchange.ts` — cliente de la API de tipo de cambio · `src/lib/payment-methods.ts` — bancos y medios de pago
 - `src/actions/` — server actions (crear/editar/borrar)
+- `src/lib/calendar.ts` — repeticiones de eventos y grilla del mes · `src/lib/reminders.ts` + `src/lib/push.ts` — resumen diario y envío push
 - `src/lib/dates.ts` — próximo cobro, agrupación por fechas · `src/lib/money.ts` — USD ↔ moneda local
 - `src/db/` — esquema y conexión · `scripts/` — migrar y sembrar

@@ -1,10 +1,12 @@
 import "server-only";
-import { and, asc, desc, eq, gte, inArray, lte, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lte, ne, or } from "drizzle-orm";
 import { db } from "@/db";
 import {
   categories,
+  events,
   expenses,
   goalContributions,
+  pushSubscriptions,
   savingsGoals,
   settings as settingsTable,
   subscriptionCharges,
@@ -12,6 +14,7 @@ import {
   tasks,
   type Settings,
 } from "@/db/schema";
+import { occurrencesIn } from "./calendar";
 import { monthRange } from "./dates";
 
 export async function getSettings(): Promise<Settings> {
@@ -31,6 +34,45 @@ export function getSubscriptions() {
 
 export function getChargesForMonth(month: string) {
   return db.select().from(subscriptionCharges).where(eq(subscriptionCharges.periodMonth, month));
+}
+
+export function getChargesForMonths(months: string[]) {
+  return db.select().from(subscriptionCharges).where(inArray(subscriptionCharges.periodMonth, months));
+}
+
+/** Cada aparición de un evento entre dos fechas (los que se repiten aparecen varias veces). */
+export async function getEventOccurrences(start: string, end: string) {
+  const rows = await db
+    .select()
+    .from(events)
+    .where(
+      or(
+        and(eq(events.repeat, "none"), gte(events.date, start), lte(events.date, end)),
+        and(ne(events.repeat, "none"), lte(events.date, end)),
+      ),
+    );
+  return rows
+    .flatMap((event) => occurrencesIn(event, start, end).map((date) => ({ event, date })))
+    .sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) ||
+        // Los de todo el día primero, luego por hora.
+        (a.event.startTime ?? "").localeCompare(b.event.startTime ?? ""),
+    );
+}
+
+export type EventOccurrence = Awaited<ReturnType<typeof getEventOccurrences>>[number];
+
+export function getTasksBetween(start: string, end: string) {
+  return db
+    .select()
+    .from(tasks)
+    .where(and(isNotNull(tasks.dueDate), gte(tasks.dueDate, start), lte(tasks.dueDate, end)))
+    .orderBy(asc(tasks.dueDate), asc(tasks.dueTime));
+}
+
+export function getPushDevices() {
+  return db.select().from(pushSubscriptions).orderBy(asc(pushSubscriptions.createdAt));
 }
 
 export function getOpenTasks() {

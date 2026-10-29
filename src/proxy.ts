@@ -11,6 +11,8 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Todo menos login, assets de Next, manifest e íconos.
-  matcher: ["/((?!login|_next/static|_next/image|favicon.ico|manifest.webmanifest|icon|apple-icon).*)"],
+  // Todo menos login, assets de Next, manifest, íconos, el service worker y el cron (que valida CRON_SECRET).
+  matcher: [
+    "/((?!login|_next/static|_next/image|favicon.ico|manifest.webmanifest|icon|apple-icon|sw.js|api/cron).*)",
+  ],
 };

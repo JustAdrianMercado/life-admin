@@ -25,6 +25,8 @@ export const settings = pgTable("settings", {
     .default(6.96),
   monthlyBudgetUsd: numeric("monthly_budget_usd", { precision: 12, scale: 2, mode: "number" }),
   timezone: text("timezone").notNull().default("America/La_Paz"),
+  // Con cuántos días de anticipación avisar de un cobro (además del aviso del mismo día).
+  notifyDaysBefore: integer("notify_days_before").notNull().default(1),
 });
 
 export const categories = pgTable("categories", {
@@ -115,7 +117,37 @@ export const goalContributions = pgTable("goal_contributions", {
   note: text("note"),
 });
 
+export const EVENT_REPEATS = ["none", "weekly", "monthly", "yearly"] as const;
+export type EventRepeat = (typeof EVENT_REPEATS)[number];
+
+export const events = pgTable("events", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  // Primera fecha; si se repite, las demás se calculan a partir de esta.
+  date: date("date", { mode: "string" }).notNull(),
+  // Sin hora de inicio = todo el día.
+  startTime: time("start_time"),
+  endTime: time("end_time"),
+  // Lugar o link de la reunión.
+  location: text("location"),
+  repeat: text("repeat").$type<EventRepeat>().notNull().default("none"),
+  categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Navegadores/dispositivos suscritos a las notificaciones push.
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export type Category = typeof categories.$inferSelect;
+export type CalendarEvent = typeof events.$inferSelect;
 export type Subscription = typeof subscriptions.$inferSelect;
 export type Expense = typeof expenses.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
