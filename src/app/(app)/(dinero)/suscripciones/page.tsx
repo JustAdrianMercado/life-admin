@@ -11,7 +11,7 @@ import { FormDialog } from "@/components/form-dialog";
 import { SubscriptionFields, SubscriptionPaymentFields } from "@/components/forms";
 import { Badge, Card, CardTitle, CategoryBadge, Empty, PageHeader, ProgressBar, Stat } from "@/components/ui";
 import { chargeDateIn, formatDate, formatMonth, monthKey, nextChargeDate, relativeDay, todayISO } from "@/lib/dates";
-import { getCategories, getChargesForMonth, getSettings, getSubscriptions } from "@/lib/data";
+import { getAccountOptions, getCategories, getChargesForMonth, getSettings, getSubscriptions } from "@/lib/data";
 import { getExchangeRates, suggestedRates } from "@/lib/exchange";
 import { fmt, formatMoney, toLocal, toUSD } from "@/lib/money";
 import { paymentLabel } from "@/lib/payment-methods";
@@ -22,11 +22,12 @@ export default async function SubscriptionsPage() {
   const settings = await getSettings();
   const today = todayISO(settings.timezone);
   const month = monthKey(today);
-  const [subs, categories, charges, exchange] = await Promise.all([
+  const [subs, categories, charges, exchange, accounts] = await Promise.all([
     getSubscriptions(),
     getCategories(),
     getChargesForMonth(month),
     getExchangeRates(),
+    getAccountOptions(),
   ]);
   const rates = suggestedRates(exchange, settings);
   const categoryById = new Map(categories.map((c) => [c.id, c]));
@@ -48,7 +49,7 @@ export default async function SubscriptionsPage() {
         subtitle={`Cobros de ${formatMonth(month)}`}
         actions={
           <FormDialog title="Nueva suscripción" trigger={<><Plus size={16} /> Nueva</>} action={saveSubscription}>
-            <SubscriptionFields categories={categories} settings={settings} />
+            <SubscriptionFields categories={categories} settings={settings} accounts={accounts} />
           </FormDialog>
         }
       />
@@ -126,7 +127,7 @@ export default async function SubscriptionsPage() {
                     </div>
                     <p className="mt-0.5 text-xs text-muted">
                       Cobra el día {s.billingDay} · próximo {formatDate(next)} ({relativeDay(next, today)})
-                      {s.paymentMethod && ` · ${paymentLabel(s.paymentMethod)}`}
+                      {s.paymentMethod && ` · ${paymentLabel(s.paymentMethod, accounts)}`}
                       {s.notes && ` · ${s.notes}`}
                     </p>
                   </div>
@@ -150,7 +151,7 @@ export default async function SubscriptionsPage() {
                           submitLabel="Marcar pagado"
                           action={markSubscriptionPaid.bind(null, s.id, month)}
                         >
-                          <SubscriptionPaymentFields sub={s} settings={settings} rates={rates} />
+                          <SubscriptionPaymentFields sub={s} settings={settings} rates={rates} accounts={accounts} />
                         </FormDialog>
                       ))}
                     <FormDialog
@@ -161,7 +162,7 @@ export default async function SubscriptionsPage() {
                       triggerSize="sm"
                       action={saveSubscription}
                     >
-                      <SubscriptionFields sub={s} categories={categories} settings={settings} />
+                      <SubscriptionFields sub={s} categories={categories} settings={settings} accounts={accounts} />
                     </FormDialog>
                     <ActionButton
                       action={deleteSubscription.bind(null, s.id)}

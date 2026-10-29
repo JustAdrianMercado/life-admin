@@ -2,10 +2,15 @@ import "server-only";
 import { and, asc, desc, eq, gte, inArray, isNotNull, lte, ne, or } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  accountMovements,
+  accounts,
+  budgets,
   categories,
   events,
   expenses,
   goalContributions,
+  habitChecks,
+  habits,
   pushSubscriptions,
   savingsGoals,
   settings as settingsTable,
@@ -14,6 +19,7 @@ import {
   tasks,
   type Settings,
 } from "@/db/schema";
+import { accountBalances, accountValue, netWorth } from "./accounts";
 import { occurrencesIn } from "./calendar";
 import { monthRange } from "./dates";
 
@@ -124,3 +130,69 @@ export async function getGoalsWithProgress(includeArchived = false) {
 }
 
 export type GoalWithProgress = Awaited<ReturnType<typeof getGoalsWithProgress>>[number];
+
+/** Cuentas con su saldo actual (las archivadas también, para mostrar su nombre en gastos viejos). */
+export async function getAccountsWithBalances() {
+  const [settings, accountRows, movements, paid] = await Promise.all([
+    getSettings(),
+    db.select().from(accounts).orderBy(asc(accounts.createdAt)),
+    db.select().from(accountMovements).orderBy(desc(accountMovements.date), desc(accountMovements.id)),
+    db
+      .select({
+        accountId: expenses.accountId,
+        amount: expenses.amount,
+        currency: expenses.currency,
+        amountLocal: expenses.amountLocal,
+      })
+      .from(expenses)
+      .where(isNotNull(expenses.accountId)),
+  ]);
+  const balances = accountBalances(accountRows, movements, paid, settings);
+  const active = accountRows.filter((a) => !a.archived);
+  return {
+    accounts: accountRows.map((a) => ({ ...a, balance: balances.get(a.id) ?? 0 })),
+    movements,
+    total: netWorth(active, balances, settings),
+  };
+}
+
+export function getAccountOptions() {
+  return db
+    .select({
+      id: accounts.id,
+      name: accounts.name,
+      emoji: accounts.emoji,
+      currency: accounts.currency,
+      paymentMethod: accounts.paymentMethod,
+      archived: accounts.archived,
+    })
+    .from(accounts)
+    .orderBy(asc(accounts.createdAt));
+}
+
+/** Lo que se eligió en "Pagado con" en el último gasto (la cuenta si tenía), para preseleccionarlo. */
+export async function getLastPaymentChoice() {
+  const [last] = await db
+    .select({ accountId: expenses.accountId, paymentMethod: expenses.paymentMethod })
+    .from(expenses)
+    .orderBy(desc(expenses.createdAt))
+    .limit(1);
+  if (!last) return null;
+  return last.accountId ? accountValue(last.accountId) : last.paymentMethod;
+}
+
+export function getBudgets() {
+  return db.select().from(budgets);
+}
+
+export function getHabits() {
+  return db
+    .select()
+    .from(habits)
+    .where(eq(habits.archived, false))
+    .orderBy(asc(habits.sortOrder), asc(habits.createdAt));
+}
+
+export function getHabitChecksSince(start: string) {
+  return db.select().from(habitChecks).where(gte(habitChecks.date, start));
+}

@@ -1,7 +1,17 @@
 import "server-only";
 import type { Subscription } from "@/db/schema";
 import { addDays, chargeDateIn, formatDate, formatTime, monthKey, relativeDay, todayISO } from "./dates";
-import { getChargesForMonths, getEventOccurrences, getOpenTasks, getSettings, getSubscriptions } from "./data";
+import {
+  getAccountOptions,
+  getChargesForMonths,
+  getEventOccurrences,
+  getHabitChecksSince,
+  getHabits,
+  getOpenTasks,
+  getSettings,
+  getSubscriptions,
+} from "./data";
+import { countInWeek } from "./habits";
 import { fmt } from "./money";
 import { paymentLabel } from "./payment-methods";
 import type { PushPayload } from "./push";
@@ -15,11 +25,14 @@ export async function buildDailyDigest(): Promise<PushPayload | null> {
   const settings = await getSettings();
   const today = todayISO(settings.timezone);
   const ahead = addDays(today, settings.notifyDaysBefore);
-  const [subs, charges, events, openTasks] = await Promise.all([
+  const [subs, charges, events, openTasks, accounts, habits, habitChecks] = await Promise.all([
     getSubscriptions(),
     getChargesForMonths([monthKey(today), monthKey(ahead)]),
     getEventOccurrences(today, today),
     getOpenTasks(),
+    getAccountOptions(),
+    getHabits(),
+    getHabitChecksSince(addDays(today, -7)),
   ]);
 
   const paid = new Set(charges.map((c) => `${c.subscriptionId}:${c.periodMonth}`));
@@ -31,7 +44,7 @@ export async function buildDailyDigest(): Promise<PushPayload | null> {
         !paid.has(`${s.id}:${monthKey(date)}`),
     );
   const describe = (s: Subscription) =>
-    `${s.name} ${fmt(s, settings)}${s.paymentMethod ? ` (${paymentLabel(s.paymentMethod)})` : ""}`;
+    `${s.name} ${fmt(s, settings)}${s.paymentMethod ? ` (${paymentLabel(s.paymentMethod, accounts)})` : ""}`;
 
   const dueToday = chargingOn(today);
   const dueAhead = settings.notifyDaysBefore > 0 ? chargingOn(ahead) : [];
@@ -48,6 +61,14 @@ export async function buildDailyDigest(): Promise<PushPayload | null> {
   }
   if (tasksToday.length) {
     lines.push(`✅ ${tasksToday.length === 1 ? `Vence hoy: ${tasksToday[0].title}` : `${tasksToday.length} pendientes vencen hoy`}`);
+  }
+  // Hábitos que tocan hoy: los diarios y los semanales que aún no cumplen la meta de la semana.
+  const habitsToday = habits.filter((h) => {
+    const checks = new Set(habitChecks.filter((c) => c.habitId === h.id).map((c) => c.date));
+    return !checks.has(today) && countInWeek(checks, today) < h.targetPerWeek;
+  });
+  if (habitsToday.length) {
+    lines.push(`🔥 Hábitos de hoy: ${habitsToday.map((h) => `${h.emoji} ${h.name}`).join(", ")}`);
   }
   if (lines.length === 0) return null;
 

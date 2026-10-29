@@ -9,6 +9,7 @@ import { FormDialog } from "@/components/form-dialog";
 import { ExchangeCredit } from "@/components/exchange";
 import { EventFields, ExpenseFields, SubscriptionPaymentFields, TaskFields } from "@/components/forms";
 import { GoalCard } from "@/components/goal-card";
+import { HabitCheck } from "@/components/habit-check";
 import { sortByPriority, TaskItem } from "@/components/task-item";
 import { buttonClass, Card, CardTitle, Empty, ProgressBar, Stat } from "@/components/ui";
 import {
@@ -22,17 +23,22 @@ import {
   todayISO,
 } from "@/lib/dates";
 import {
+  getAccountOptions,
+  getAccountsWithBalances,
   getCategories,
   getChargesForMonth,
   getEventOccurrences,
   getExpensesForMonth,
   getGoalsWithProgress,
+  getHabitChecksSince,
+  getHabits,
   getOpenTasks,
   getSettings,
   getSubscriptions,
 } from "@/lib/data";
 import { getExchangeRates, suggestedRates } from "@/lib/exchange";
 import { fmt, formatMoney, formatRate, isEstimatedLocal, localLabel, paidLocal, sumUSD, toLocal } from "@/lib/money";
+import { countInWeek, habitStreak, HISTORY_DAYS } from "@/lib/habits";
 import { isBank } from "@/lib/payment-methods";
 
 function SeeAll({ href }: { href: string }) {
@@ -48,7 +54,7 @@ export default async function DashboardPage() {
   const today = todayISO(settings.timezone);
   const month = monthKey(today);
   const weekEnd = addDays(today, 6);
-  const [categories, subs, charges, openTasks, expenses, goals, exchange, agenda] = await Promise.all([
+  const [categories, subs, charges, openTasks, expenses, goals, exchange, agenda, accounts, wallet, habits, habitChecks] = await Promise.all([
     getCategories(),
     getSubscriptions(),
     getChargesForMonth(month),
@@ -57,7 +63,15 @@ export default async function DashboardPage() {
     getGoalsWithProgress(),
     getExchangeRates(),
     getEventOccurrences(today, weekEnd),
+    getAccountOptions(),
+    getAccountsWithBalances(),
+    getHabits(),
+    getHabitChecksSince(addDays(today, -HISTORY_DAYS)),
   ]);
+  const habitRows = habits.map((h) => {
+    const set = new Set(habitChecks.filter((c) => c.habitId === h.id).map((c) => c.date));
+    return { habit: h, done: set.has(today), streak: habitStreak(set, h.targetPerWeek, today), week: countInWeek(set, today) };
+  });
   const rates = suggestedRates(exchange, settings);
 
   // Cobros
@@ -87,7 +101,7 @@ export default async function DashboardPage() {
   const budget = settings.monthlyBudgetUsd;
 
   // Tipo de cambio: la venta de los bancos con los que pagas (o el rango de todos).
-  const usedBanks = new Set([...subs, ...expenses].map((x) => x.paymentMethod).filter(isBank));
+  const usedBanks = new Set([...subs, ...expenses, ...accounts].map((x) => x.paymentMethod).filter(isBank));
   const bankRates = exchange.banks?.banks.filter((b) => b.sell) ?? [];
   const myBanks = bankRates.filter((b) => usedBanks.has(b.slug));
   const bankSells = bankRates.map((b) => b.sell!);
@@ -107,12 +121,15 @@ export default async function DashboardPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Hola 👋</h1>
         </div>
         <div className="flex gap-2">
+          {/* En el celular se agrega con el botón + de la barra de abajo. */}
+          <div className="hidden gap-2 md:flex">
           <FormDialog title="Nuevo pendiente" trigger={<><Plus size={16} /> Pendiente</>} action={saveTask} triggerVariant="secondary">
             <TaskFields categories={categories} />
           </FormDialog>
           <FormDialog title="Nuevo gasto" trigger={<><Plus size={16} /> Gasto</>} action={saveExpense}>
-            <ExpenseFields categories={categories} settings={settings} rates={rates} today={today} />
+            <ExpenseFields categories={categories} settings={settings} rates={rates} today={today} accounts={accounts} />
           </FormDialog>
+          </div>
           <Link href="/ajustes" className={`${buttonClass("ghost")} md:hidden`} aria-label="Ajustes">
             <SettingsIcon size={18} />
           </Link>
@@ -120,6 +137,25 @@ export default async function DashboardPage() {
       </header>
 
       <div className="grid gap-4 lg:grid-cols-2">
+        {habitRows.length > 0 && (
+          <Card className="lg:col-span-2">
+            <CardTitle action={<SeeAll href="/habitos" />}>
+              Hábitos de hoy · {habitRows.filter((r) => r.done).length}/{habitRows.length}
+            </CardTitle>
+            <ul className="-mx-1 flex gap-4 overflow-x-auto px-1 pb-1">
+              {habitRows.map(({ habit: h, done, streak }) => (
+                <li key={h.id} className="flex w-20 shrink-0 flex-col items-center gap-1 text-center">
+                  <HabitCheck habitId={h.id} date={today} done={done} color={h.color} label={h.name} />
+                  <span className="w-full truncate text-xs font-medium">
+                    {h.emoji} {h.name}
+                  </span>
+                  <span className="text-[11px] text-muted">{streak.count > 0 ? `🔥 ${streak.count}` : " "}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+
         <Card className="lg:col-span-2">
           <CardTitle action={<SeeAll href="/cambio" />}>Dólar hoy · Bs por USD</CardTitle>
           {!exchange.configured ? (
@@ -247,7 +283,7 @@ export default async function DashboardPage() {
                 submitLabel="Marcar pagado"
                 action={markSubscriptionPaid.bind(null, s.id, month)}
               >
-                <SubscriptionPaymentFields sub={s} settings={settings} rates={rates} />
+                <SubscriptionPaymentFields sub={s} settings={settings} rates={rates} accounts={accounts} />
               </FormDialog>
             </div>
           ))}
@@ -295,6 +331,16 @@ export default async function DashboardPage() {
               value={(spentUSD / budget) * 100}
               color={spentUSD > budget ? "var(--danger)" : undefined}
             />
+          )}
+          {wallet.accounts.some((a) => !a.archived) && (
+            <p className="mt-3 border-t border-border pt-3 text-sm text-muted">
+              <Link href="/cuentas" className="hover:text-fg">
+                En tus cuentas:{" "}
+                <span className="tabular font-semibold text-fg">{formatMoney(wallet.total.local, settings.localCurrency)}</span>
+                {" · "}
+                {formatMoney(wallet.total.usd, "USD")}
+              </Link>
+            </p>
           )}
           {expenses.length > 0 && (
             <p className="mt-3 border-t border-border pt-3 text-sm text-muted">

@@ -3,6 +3,7 @@
 Suscripciones (qué día cobran y cuánto necesitas al mes), pendientes con y sin fecha, gastos del mes y un scoreboard de metas de ahorro.
 Tipo de cambio del día (oficial BCB, paralelo, Binance P2P y cada banco) y gastos en bolivianos según lo que cobró cada banco.
 Calendario con los cobros, eventos/reuniones y pendientes, y notificaciones push cada mañana.
+Cuentas con saldo (bancos, Binance, efectivo), presupuestos por categoría con avisos y hábitos con rachas.
 
 Next.js 16 · Drizzle ORM · Postgres (Neon en producción, PGlite en local) · Tailwind.
 
@@ -46,6 +47,19 @@ Los datos vienen de la API de [NextWave Software](https://wavesoft.cloud/develop
 - Al registrar un gasto en USD eliges con qué pagaste: los Bs cobrados se estiman con la **venta** de ese banco (o la compra de USDT en Binance P2P) y puedes corregirlos con lo que realmente te descontaron. El total del mes en Bs usa ese monto.
 - Las condiciones de la API piden mostrar el crédito “NextWave Software” con enlace a wavesoft.cloud (ya está en Inicio y en Tipo de cambio).
 
+## Navegación y gasto rápido
+
+- En el celular la barra de abajo es `Inicio · Agenda · (+) · Dinero · Más`, como en Wallet o Money Lover. *Agenda* (calendario, pendientes, hábitos) y *Dinero* (gastos, cuentas, presupuestos, suscripciones, metas, tipo de cambio) se recorren con las pestañas de arriba. *Más* tiene Ajustes, Notificaciones y cómo instalar la app.
+- En la PC, el menú lateral está agrupado y arriba tiene **+ Nuevo**.
+- El **+** abre un panel para registrar un gasto (monto, cuenta o medio de pago, categoría, Hoy/Ayer), un evento o un pendiente desde cualquier página. Al guardar un gasto aparece "Deshacer".
+- Atajos del ícono (Android/PC): `/?nuevo=gasto|evento|pendiente` abre el panel directamente.
+
+## Cuentas, presupuestos y hábitos
+
+- `/cuentas`: cada cuenta (en Bs o USD/USDT) tiene saldo inicial, ingresos, transferencias (con lo que salió y lo que llegó, ej. Bs → USDT) y ajustes. Los gastos pagados con una cuenta se descuentan de su saldo; si la cuenta es en Bs, se descuenta lo cobrado en Bs. Arriba se ve el patrimonio total.
+- `/presupuestos`: límite mensual en USD por categoría. Al pasar el 80 % y el 100 % llega un aviso en la app y una notificación push (una vez por mes y umbral).
+- `/habitos`: diarios o "N veces por semana", con racha, mapa de calor de 12 semanas y la tarjeta "Hábitos de hoy" en Inicio. El resumen de la mañana incluye los hábitos pendientes del día.
+
 ## Calendario y notificaciones
 
 - `/calendario`: vista mensual con los cobros de suscripciones, los eventos (pueden repetirse cada semana, mes o año) y los pendientes con fecha. Toca un día para ver el detalle, marcar un cobro como pagado o crear un evento.
@@ -59,9 +73,10 @@ Edita `src/db/schema.ts`, luego `npm run db:generate` y `npm run db:migrate`.
 
 ## Estructura
 
-- `src/app/(app)/` — páginas: Inicio, Calendario, Pendientes, Suscripciones, Gastos, Metas, Tipo de cambio, Ajustes
+- `src/app/(app)/` — páginas; `(agenda)/` y `(dinero)/` son grupos (no cambian la URL) con sus pestañas. Inicio, Calendario, Pendientes, Hábitos, Cuentas, Presupuestos, Suscripciones, Gastos, Metas, Tipo de cambio, Ajustes
 - `src/lib/exchange.ts` — cliente de la API de tipo de cambio · `src/lib/payment-methods.ts` — bancos y medios de pago
 - `src/actions/` — server actions (crear/editar/borrar)
+- `src/lib/sections.ts` — secciones de la navegación · `src/components/quick-add.tsx` — el botón + · `src/lib/accounts.ts` — saldos · `src/lib/budgets.ts` — avisos de presupuesto · `src/lib/habits.ts` — rachas
 - `src/lib/calendar.ts` — repeticiones de eventos y grilla del mes · `src/lib/reminders.ts` + `src/lib/push.ts` — resumen diario y envío push
 - `src/lib/dates.ts` — próximo cobro, agrupación por fechas · `src/lib/money.ts` — USD ↔ moneda local
 - `src/db/` — esquema y conexión · `scripts/` — migrar y sembrar

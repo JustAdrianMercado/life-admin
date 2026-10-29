@@ -6,7 +6,9 @@ import { db } from "@/db";
 import { expenses, subscriptionCharges, subscriptions } from "@/db/schema";
 import { requireAuth } from "@/lib/auth";
 import { chargeDateIn } from "@/lib/dates";
-import { currency, num, optInt, optStr, payment, str } from "@/lib/form";
+import { checkBudgetAlert } from "@/lib/budgets";
+import { currency, num, optInt, optStr, str } from "@/lib/form";
+import { readPayment } from "@/lib/payments";
 
 export async function saveSubscription(fd: FormData) {
   await requireAuth();
@@ -36,7 +38,7 @@ export async function deleteSubscription(id: number) {
 /** Marca el cobro del mes como pagado y lo registra como gasto, con lo que realmente se cobró. */
 export async function markSubscriptionPaid(id: number, month: string, fd: FormData) {
   await requireAuth();
-  const paid = payment(fd);
+  const { values: paid, chosen } = await readPayment(fd);
   const [sub] = await db.select().from(subscriptions).where(eq(subscriptions.id, id));
   if (!sub) return;
   const [existing] = await db
@@ -56,10 +58,11 @@ export async function markSubscriptionPaid(id: number, month: string, fd: FormDa
     })
     .returning();
   await db.insert(subscriptionCharges).values({ subscriptionId: id, periodMonth: month, expenseId: expense.id });
-  // Recordar el medio de pago para el próximo mes.
-  if (!sub.paymentMethod && paid.paymentMethod) {
-    await db.update(subscriptions).set({ paymentMethod: paid.paymentMethod }).where(eq(subscriptions.id, id));
+  // Recordar el medio de pago (o la cuenta) para el próximo mes.
+  if (!sub.paymentMethod && chosen) {
+    await db.update(subscriptions).set({ paymentMethod: chosen }).where(eq(subscriptions.id, id));
   }
+  await checkBudgetAlert(sub.categoryId, expense.date);
   revalidatePath("/", "layout");
 }
 

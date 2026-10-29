@@ -7,7 +7,9 @@ import { FormDialog } from "@/components/form-dialog";
 import { ExpenseFields } from "@/components/forms";
 import { buttonClass, Card, CardTitle, Empty, PageHeader, ProgressBar, Stat } from "@/components/ui";
 import { formatDate, formatMonth, monthKey, shiftMonth, todayISO } from "@/lib/dates";
-import { getCategories, getExpensesForMonth, getSettings } from "@/lib/data";
+import { accountValue } from "@/lib/accounts";
+import { budgetColor } from "@/lib/budget-status";
+import { getAccountOptions, getBudgets, getCategories, getExpensesForMonth, getSettings } from "@/lib/data";
 import { getExchangeRates, suggestedRates } from "@/lib/exchange";
 import { fmt, formatMoney, formatRate, isEstimatedLocal, localLabel, paidLocal, sumUSD, toUSD } from "@/lib/money";
 import { paymentLabel } from "@/lib/payment-methods";
@@ -20,11 +22,16 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
   const { mes } = await searchParams;
   const month = typeof mes === "string" && /^\d{4}-\d{2}$/.test(mes) ? mes : monthKey(today);
 
-  const [expenses, categories, exchange] = await Promise.all([
+  const [expenses, categories, exchange, accounts, budgets] = await Promise.all([
     getExpensesForMonth(month),
     getCategories(),
     getExchangeRates(),
+    getAccountOptions(),
+    getBudgets(),
   ]);
+  const limitBy = new Map(budgets.map((b) => [b.categoryId, b.amountUsd]));
+  // Medio con el que se pagó: la cuenta si se eligió una, si no el banco/medio.
+  const methodOf = (e: (typeof expenses)[number]) => (e.accountId ? accountValue(e.accountId) : e.paymentMethod);
   const rates = suggestedRates(exchange, settings);
   const categoryById = new Map(categories.map((c) => [c.id, c]));
 
@@ -44,7 +51,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
   const avgRate = chargedAmount > 0 ? chargedUSD.reduce((acc, e) => acc + e.amountLocal!, 0) / chargedAmount : null;
 
   const byMethod = new Map<string | null, number>();
-  for (const e of expenses) byMethod.set(e.paymentMethod, (byMethod.get(e.paymentMethod) ?? 0) + paidLocal(e, settings));
+  for (const e of expenses) byMethod.set(methodOf(e), (byMethod.get(methodOf(e)) ?? 0) + paidLocal(e, settings));
   const methods = [...byMethod.entries()].sort(([, a], [, b]) => b - a);
 
   const isCurrent = month === monthKey(today);
@@ -76,6 +83,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
               settings={settings}
               rates={rates}
               today={isCurrent ? today : `${month}-01`}
+              accounts={accounts}
             />
           </FormDialog>
         }
@@ -138,7 +146,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
               <ul className="divide-y divide-border">
                 {methods.map(([method, amount]) => (
                   <li key={method ?? "none"} className="flex justify-between py-2 text-sm">
-                    <span>{paymentLabel(method) ?? "Sin especificar"}</span>
+                    <span>{paymentLabel(method, accounts) ?? "Sin especificar"}</span>
                     <span className="tabular font-medium">
                       {formatMoney(amount, settings.localCurrency)}{" "}
                       <span className="text-xs text-muted">{Math.round((amount / totalLocal) * 100)}%</span>
@@ -151,13 +159,22 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
         </div>
 
         <Card>
-          <CardTitle>Por categoría</CardTitle>
+          <CardTitle
+            action={
+              <Link href="/presupuestos" className="text-xs font-medium text-accent">
+                Presupuestos
+              </Link>
+            }
+          >
+            Por categoría
+          </CardTitle>
           {breakdown.length === 0 ? (
             <Empty>Sin gastos este mes.</Empty>
           ) : (
             <ul className="flex flex-col gap-3">
               {breakdown.map(([catId, amount]) => {
                 const c = catId ? categoryById.get(catId) : undefined;
+                const limit = catId ? limitBy.get(catId) : undefined;
                 return (
                   <li key={catId ?? "none"}>
                     <div className="mb-1 flex justify-between text-sm">
@@ -166,10 +183,16 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
                       </span>
                       <span className="tabular font-medium">
                         {formatMoney(amount, "USD")}{" "}
-                        <span className="text-xs text-muted">{Math.round((amount / totalUSD) * 100)}%</span>
+                        <span className="text-xs text-muted">
+                          {limit ? `de ${formatMoney(limit, "USD")}` : `${Math.round((amount / totalUSD) * 100)}%`}
+                        </span>
                       </span>
                     </div>
-                    <ProgressBar value={(amount / totalUSD) * 100} color={c?.color ?? "var(--muted)"} className="h-1.5" />
+                    <ProgressBar
+                      value={limit ? (amount / limit) * 100 : (amount / totalUSD) * 100}
+                      color={limit ? budgetColor(amount, limit) : (c?.color ?? "var(--muted)")}
+                      className="h-1.5"
+                    />
                   </li>
                 );
               })}
@@ -203,7 +226,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
                     <p className="text-xs text-muted">
                       {formatDate(e.date)}
                       {c && ` · ${c.name}`}
-                      {e.paymentMethod && ` · ${paymentLabel(e.paymentMethod)}`}
+                      {methodOf(e) && ` · ${paymentLabel(methodOf(e), accounts)}`}
                     </p>
                   </div>
                   <div className="text-right">
@@ -224,7 +247,7 @@ export default async function ExpensesPage({ searchParams }: PageProps<"/gastos"
                       triggerSize="sm"
                       action={saveExpense}
                     >
-                      <ExpenseFields expense={e} categories={categories} settings={settings} rates={rates} today={today} />
+                      <ExpenseFields expense={e} categories={categories} settings={settings} rates={rates} today={today} accounts={accounts} />
                     </FormDialog>
                     <ActionButton
                       action={deleteExpense.bind(null, e.id)}

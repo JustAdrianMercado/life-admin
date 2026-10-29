@@ -71,7 +71,7 @@ export default async function SettingsPage() {
           </form>
         </Card>
 
-        <Card>
+        <Card id="notificaciones" className="scroll-mt-6">
           <CardTitle>Notificaciones</CardTitle>
           <p className="mb-4 text-sm text-muted">
             Cada mañana (~8:00) te aviso de los cobros de suscripciones, los eventos del día y los pendientes que vencen.

@@ -1,5 +1,8 @@
 // Medios de pago. Los bancos usan el mismo slug que la API de tipo de cambio.
 
+import type { Currency } from "@/db/schema";
+import { accountIdOf } from "./accounts";
+
 export const BINANCE_P2P = "binance-p2p";
 
 export const BANKS = [
@@ -27,8 +30,32 @@ export const OTHER_METHODS = [
 
 const labels = new Map([...BANKS, ...OTHER_METHODS].map((m) => [m.slug, m.name]));
 
-export function paymentLabel(slug: string | null | undefined) {
-  return slug ? (labels.get(slug) ?? slug) : null;
+/** Lo mínimo de una cuenta que necesitan los formularios (se puede pasar a componentes cliente). */
+export type AccountOption = {
+  id: number;
+  name: string;
+  emoji: string;
+  currency: Currency;
+  paymentMethod: string | null;
+  archived: boolean;
+};
+
+/** Nombre de un medio de pago; "acc:<id>" se muestra con el nombre de la cuenta. */
+export function paymentLabel(slug: string | null | undefined, accounts: AccountOption[] = []) {
+  if (!slug) return null;
+  const accountId = accountIdOf(slug);
+  if (accountId != null) {
+    const account = accounts.find((a) => a.id === accountId);
+    return account ? `${account.emoji} ${account.name}` : "Cuenta borrada";
+  }
+  return labels.get(slug) ?? slug;
+}
+
+/** Slug de banco/medio detrás de un valor (las cuentas usan el medio que tienen asociado). */
+export function resolveMethod(value: string | null | undefined, accounts: AccountOption[]) {
+  const accountId = accountIdOf(value);
+  if (accountId == null) return value || null;
+  return accounts.find((a) => a.id === accountId)?.paymentMethod ?? null;
 }
 
 export function isBank(slug: string | null | undefined) {

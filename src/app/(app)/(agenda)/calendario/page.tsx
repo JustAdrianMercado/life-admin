@@ -13,6 +13,7 @@ import type { CalendarEvent, Subscription, Task } from "@/db/schema";
 import { monthGrid } from "@/lib/calendar";
 import { chargeDateIn, formatDate, formatMonth, formatTime, monthKey, relativeDay, shiftMonth, todayISO } from "@/lib/dates";
 import {
+  getAccountOptions,
   getCategories,
   getChargesForMonths,
   getEventOccurrences,
@@ -58,13 +59,14 @@ export default async function CalendarPage({ searchParams }: PageProps<"/calenda
 
   // La grilla muestra días del mes anterior y del siguiente.
   const months = [shiftMonth(month, -1), month, shiftMonth(month, 1)];
-  const [subs, charges, occurrences, tasks, categories, exchange] = await Promise.all([
+  const [subs, charges, occurrences, tasks, categories, exchange, accounts] = await Promise.all([
     getSubscriptions(),
     getChargesForMonths(months),
     getEventOccurrences(grid.start, grid.end),
     getTasksBetween(grid.start, grid.end),
     getCategories(),
     getExchangeRates(),
+    getAccountOptions(),
   ]);
   const rates = suggestedRates(exchange, settings);
 
@@ -220,7 +222,7 @@ export default async function CalendarPage({ searchParams }: PageProps<"/calenda
                     <p className="text-sm font-medium">{sub.name}</p>
                     <p className="text-xs text-muted">
                       {fmt(sub, settings)}
-                      {sub.paymentMethod && ` · ${paymentLabel(sub.paymentMethod)}`}
+                      {sub.paymentMethod && ` · ${paymentLabel(sub.paymentMethod, accounts)}`}
                     </p>
                   </div>
                   {paid ? (
@@ -236,7 +238,7 @@ export default async function CalendarPage({ searchParams }: PageProps<"/calenda
                       submitLabel="Marcar pagado"
                       action={markSubscriptionPaid.bind(null, sub.id, monthKey(selected))}
                     >
-                      <SubscriptionPaymentFields sub={sub} settings={settings} rates={rates} />
+                      <SubscriptionPaymentFields sub={sub} settings={settings} rates={rates} accounts={accounts} />
                     </FormDialog>
                   )}
                 </li>

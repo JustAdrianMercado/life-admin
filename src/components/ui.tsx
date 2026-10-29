@@ -1,7 +1,8 @@
 import clsx from "clsx";
 import type { ComponentProps, ReactNode } from "react";
 import type { Category, Priority } from "@/db/schema";
-import { BANKS, OTHER_METHODS } from "@/lib/payment-methods";
+import { accountValue } from "@/lib/accounts";
+import { BANKS, OTHER_METHODS, type AccountOption } from "@/lib/payment-methods";
 
 export function PageHeader({ title, subtitle, actions }: { title: string; subtitle?: ReactNode; actions?: ReactNode }) {
   return (
@@ -39,7 +40,8 @@ const buttonVariants = {
 export function buttonClass(variant: keyof typeof buttonVariants = "primary", size: "sm" | "md" = "md") {
   return clsx(
     "inline-flex items-center justify-center gap-1.5 rounded-xl font-medium transition disabled:opacity-50 cursor-pointer",
-    size === "md" ? "h-10 px-4 text-sm" : "h-8 px-2.5 text-xs",
+    // En el celular los botones chicos también miden 40px para tocarlos sin errar.
+    size === "md" ? "h-10 px-4 text-sm" : "h-10 min-w-10 px-2.5 text-xs sm:h-8 sm:min-w-8",
     buttonVariants[variant],
   );
 }
@@ -156,10 +158,29 @@ export function Empty({ children }: { children: ReactNode }) {
   return <p className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted">{children}</p>;
 }
 
-export function PaymentMethodOptions() {
+export function PaymentMethodOptions({
+  accounts = [],
+  current,
+  emptyLabel = "Sin especificar",
+}: {
+  accounts?: AccountOption[];
+  current?: string | null;
+  emptyLabel?: string;
+}) {
+  // Las cuentas archivadas solo aparecen si son el valor actual.
+  const visible = accounts.filter((a) => !a.archived || accountValue(a.id) === current);
   return (
     <>
-      <option value="">Sin especificar</option>
+      <option value="">{emptyLabel}</option>
+      {visible.length > 0 && (
+        <optgroup label="Tus cuentas">
+          {visible.map((a) => (
+            <option key={a.id} value={accountValue(a.id)}>
+              {a.emoji} {a.name}
+            </option>
+          ))}
+        </optgroup>
+      )}
       <optgroup label="Bancos">
         {BANKS.map((b) => (
           <option key={b.slug} value={b.slug}>

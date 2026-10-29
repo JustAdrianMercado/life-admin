@@ -1,6 +1,8 @@
 import { EVENT_REPEATS, type CalendarEvent, type Category, type Expense, type SavingsGoal, type Settings, type Subscription, type Task } from "@/db/schema";
+import { accountValue } from "@/lib/accounts";
 import { repeatLabel } from "@/lib/calendar";
-import type { SuggestedRates } from "@/lib/payment-methods";
+import { addDays } from "@/lib/dates";
+import type { AccountOption, SuggestedRates } from "@/lib/payment-methods";
 import { PaymentFields } from "./payment-fields";
 import { CategoryOptions, Field, Input, PaymentMethodOptions, Select, Textarea } from "./ui";
 
@@ -42,10 +44,12 @@ export function SubscriptionFields({
   sub,
   categories,
   settings,
+  accounts = [],
 }: {
   sub?: Subscription;
   categories: Category[];
   settings: Settings;
+  accounts?: AccountOption[];
 }) {
   const defaultCategory = sub?.categoryId ?? categories.find((c) => c.name === "Suscripciones")?.id;
   return (
@@ -67,7 +71,7 @@ export function SubscriptionFields({
       </div>
       <Field label="Se paga con">
         <Select name="paymentMethod" defaultValue={sub?.paymentMethod ?? ""}>
-          <PaymentMethodOptions />
+          <PaymentMethodOptions accounts={accounts} current={sub?.paymentMethod} />
         </Select>
       </Field>
       {sub && (
@@ -181,12 +185,14 @@ export function ExpenseFields({
   settings,
   rates,
   today,
+  accounts = [],
 }: {
   expense?: Expense;
   categories: Category[];
   settings: Settings;
   rates: SuggestedRates;
   today: string;
+  accounts?: AccountOption[];
 }) {
   return (
     <>
@@ -197,10 +203,11 @@ export function ExpenseFields({
       <PaymentFields
         amount={expense?.amount}
         currency={expense?.currency}
-        paymentMethod={expense?.paymentMethod}
+        paymentMethod={expense?.accountId ? accountValue(expense.accountId) : expense?.paymentMethod}
         amountLocal={expense?.amountLocal}
         localCurrency={settings.localCurrency}
         rates={rates}
+        accounts={accounts}
       />
       <div className="grid grid-cols-2 gap-3">
         <Field label="Fecha">
@@ -221,10 +228,12 @@ export function SubscriptionPaymentFields({
   sub,
   settings,
   rates,
+  accounts = [],
 }: {
   sub: Subscription;
   settings: Settings;
   rates: SuggestedRates;
+  accounts?: AccountOption[];
 }) {
   return (
     <PaymentFields
@@ -233,7 +242,75 @@ export function SubscriptionPaymentFields({
       paymentMethod={sub.paymentMethod}
       localCurrency={settings.localCurrency}
       rates={rates}
+      accounts={accounts}
     />
+  );
+}
+
+/** Botones tipo "chip" que funcionan como radio (sin JavaScript). */
+function ChipRadio({ name, value, defaultChecked, children }: { name: string; value: string; defaultChecked?: boolean; children: React.ReactNode }) {
+  return (
+    <label className="cursor-pointer">
+      <input type="radio" name={name} value={value} defaultChecked={defaultChecked} className="peer sr-only" />
+      <span className="flex h-10 items-center gap-1.5 rounded-full border border-border bg-surface px-3 text-sm text-muted transition peer-checked:border-accent peer-checked:bg-accent-soft peer-checked:text-accent peer-focus-visible:ring-2 peer-focus-visible:ring-accent/30">
+        {children}
+      </span>
+    </label>
+  );
+}
+
+/** Gasto rápido (botón +): monto grande, categorías y medio de pago en botones, fecha Hoy/Ayer. */
+export function QuickExpenseFields({
+  categories,
+  settings,
+  rates,
+  today,
+  accounts,
+  lastPayment,
+}: {
+  categories: Category[];
+  settings: Settings;
+  rates: SuggestedRates;
+  today: string;
+  accounts: AccountOption[];
+  lastPayment: string | null;
+}) {
+  return (
+    <>
+      <PaymentFields
+        paymentMethod={lastPayment}
+        localCurrency={settings.localCurrency}
+        rates={rates}
+        accounts={accounts}
+        quick
+      />
+      <Field label="Categoría">
+        <div className="flex flex-wrap gap-2">
+          {categories.map((c) => (
+            <ChipRadio key={c.id} name="categoryId" value={String(c.id)}>
+              <span aria-hidden>{c.emoji}</span> {c.name}
+            </ChipRadio>
+          ))}
+        </div>
+      </Field>
+      <Field label="Fecha">
+        <div className="flex flex-wrap items-center gap-2">
+          <ChipRadio name="date" value={today} defaultChecked>
+            Hoy
+          </ChipRadio>
+          <ChipRadio name="date" value={addDays(today, -1)}>
+            Ayer
+          </ChipRadio>
+          <ChipRadio name="date" value="otra">
+            Otra
+          </ChipRadio>
+          <Input name="otherDate" type="date" defaultValue={today} className="h-10 w-auto" aria-label="Otra fecha" />
+        </div>
+      </Field>
+      <Field label="Descripción (opcional)">
+        <Input name="description" placeholder="Si la dejas vacía se usa la categoría" />
+      </Field>
+    </>
   );
 }
 
